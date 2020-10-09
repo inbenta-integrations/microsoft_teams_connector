@@ -1,0 +1,21 @@
+{
+    "name": "inbenta/teams-connector",
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "git@github.com:inbenta-integrations/chatbot_api_connector.git"
+        }
+    ],
+    "require": {
+        "php": "^7.3",
+        "inbenta/chatbot-api-connector": "dev-master",
+        "ext-dom": "*",
+        "ext-json": "*",
+        "ext-libxml": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Inbenta\\MicrosoftTeamsConnector\\": "lib/MicrosoftTeamsConnector"
+        }
+    }
+}
