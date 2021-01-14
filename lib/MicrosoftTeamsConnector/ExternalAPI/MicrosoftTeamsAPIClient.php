@@ -1,4 +1,5 @@
 <?php
+
 namespace Inbenta\MicrosoftTeamsConnector\ExternalAPI;
 
 use Exception;
@@ -262,6 +263,35 @@ class MicrosoftTeamsAPIClient
     }
 
     /**
+     * Get the user email from Graph API
+     * @param string $senderId
+     * @return string $email
+     */
+    public function getUserEmailFromGraph(string $senderId)
+    {
+        $email = "";
+        $url = "{$this->targetEndpoint['base_url']}v3/conversations/{$this->targetEndpoint['endpoint']}/pagedmembers";
+        $response = $this->request(
+            'GET',
+            $url,
+        );
+        if (method_exists($response, "getBody") && method_exists($response->getBody(), "getContents")) {
+            $members = json_decode($response->getBody()->getContents());
+            if (isset($members->members) && is_array($members->members)) {
+                foreach ($members->members as $member) {
+                    if (isset($member->userPrincipalName) && isset($member->id)) {
+                        if ($member->id == $senderId) {
+                            $email = $member->userPrincipalName;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return $email;
+    }
+
+    /**
      * Generates the external id used by HyperChat to identify one user as external.
      * This external id will be used by HyperChat adapter to instance this client class from the external id
      *
@@ -447,31 +477,44 @@ class MicrosoftTeamsAPIClient
         } // If attachment provided, create activity directly
         elseif (isset($message['attachments'])) {
             $outgoingActivity['attachments'] = $message['attachments'];
+        } elseif ($message['type'] === 'typing') {
+            $outgoingActivity['type'] = 'typing';
         }
 
-        $response =  $this->request(
-            'POST',
-            $url,
-            [
-                'json' => $outgoingActivity,
-            ]
-        );
-
-        // send related if needed
-        if(isset($message['related'])){
-            $relatedActivity = $this->activity;
-            $relatedActivity['text'] = '';
-            $relatedActivity['attachments'] = $message['related'];
-            $this->request(
+        if (trim($outgoingActivity['text']) !== '' || isset($outgoingActivity['attachments']) || $outgoingActivity['type'] === 'typing') {
+            $response =  $this->request(
                 'POST',
                 $url,
                 [
-                    'json' => $relatedActivity
+                    'json' => $outgoingActivity,
                 ]
             );
-        }
 
-        return $response;
+            // send related if needed
+            if(isset($message['related'])) {
+                $relatedActivity = $this->activity;
+                $relatedActivity['text'] = '';
+                $relatedActivity['attachments'] = $message['related'];
+                if (
+                    isset($relatedActivity['attachments'][0]) && isset($relatedActivity['attachments'][0]['content']) &&
+                    isset($relatedActivity['attachments'][0]['content']['title'])
+                ) {
+                    $relatedActivity['text'] = $relatedActivity['attachments'][0]['content']['title'];
+                    unset($relatedActivity['attachments'][0]['content']['title']);
+                }
+                $this->request(
+                    'POST',
+                    $url,
+                    [
+                        'json' => $relatedActivity
+                    ]
+                );
+            }
+
+            return $response;
+        } else {
+            return true;
+        }
     }
 
     /**
@@ -487,8 +530,8 @@ class MicrosoftTeamsAPIClient
     }
 
     /**
-     * Handles the hook challenge sent by Microsoft to ensure that we're the owners of the Slack app.
-     * Requires the request body sent by the Slack app
+     * Handles the hook challenge sent by Microsoft to ensure that we're the owners of the Teams app.
+     * Requires the request body sent by the Teams app
      *
      * @param array $requestBody Request body array
      */
@@ -501,7 +544,7 @@ class MicrosoftTeamsAPIClient
     }
 
     /**
-     * Sends a flag to Slack to display a notification alert as the bot is 'writing'
+     * Sends a flag to Teams to display a notification alert as the bot is 'writing'
      * This method can be used to disable the notification if a 'false' parameter is received
      *
      * @param bool $show Show or hide value
@@ -510,11 +553,13 @@ class MicrosoftTeamsAPIClient
      */
     public function showBotTyping($show = true)
     {
+        $message = ['type' => 'typing'];
+        $this->send($message);
         return null;
     }
 
     /**
-     *   Sends a message to Slack. Needs a message formatted with the Slack notation
+     *   Sends a message to Teams. Needs a message formatted with the Teams notation
      *
      * @param array $message
      *

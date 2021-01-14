@@ -15,5 +15,6 @@ return [
     'read_answer' => 'Leggi questa risposta',
     'thanks' => 'Grazie!',
     'yes' => 'Sì',
-    'validate' => 'Confermare'
+    'validate' => 'Confermare',
+    'date_format' => 'formato data: mm/dd/YYYY'
 ];

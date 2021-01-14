@@ -1,7 +1,7 @@
 <?php
 
 return [
-	'agent_joined' => 'El agente $agentName se ha unido a la conversación.',
+    'agent_joined' => 'El agente $agentName se ha unido a la conversación.',
     'api_timeout' => 'Por favor, reformula tu pregunta.',
     'ask_rating_comment' => 'Por favor dinos porqué',
     'ask-to-escalate' => '¿Quieres iniciar un chat con un agente?',
@@ -16,4 +16,5 @@ return [
     'thanks' => 'Gracias!',
     'yes' => 'Sí',
     'validate' => 'Confirmar',
+    'date_format' => 'formato de fecha: mm/dd/YYYY'
 ];

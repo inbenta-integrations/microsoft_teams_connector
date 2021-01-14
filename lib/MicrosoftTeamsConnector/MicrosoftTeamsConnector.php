@@ -48,12 +48,14 @@ class MicrosoftTeamsConnector extends ChatbotConnector
 
             $this->request = Request::createFromGlobals();
             $this->parsedBody = json_decode($this->request->getContent(), true);
+            $this->parsedBody = is_null($this->parsedBody) ? [] : $this->parsedBody;
 
             // Initialize base components
             $conversationConf = [
                 'configuration' => $this->conf->get('conversation.default'),
                 'userType' => $this->conf->get('conversation.user_type'),
                 'environment' => $this->environment,
+                'source' => $this->conf->get('conversation.source')
             ];
 
             $this->session = new SessionManager($this->getExternalIdFromRequest($this->parsedBody));

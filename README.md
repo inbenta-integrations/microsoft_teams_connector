@@ -17,7 +17,7 @@ This bot template inherits the functionalities from the `ChatbotConnector` libra
 Currently, the features provided by this application are:
 
 * Simple answers
-* Multiple options with a limit of 3 elements
+* Multiple options
 * Polar questions
 * Chained answers
 * Content ratings (yes/no + comment)

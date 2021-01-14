@@ -81,10 +81,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
     {
         $request = json_decode($request);
 
-        if (
-            is_null($request) || !isset($request->serviceUrl)
-            && (!isset($request->text) || !isset($request->value))
-        ) {
+        if (is_null($request) || !isset($request->serviceUrl) && (!isset($request->text) || !isset($request->value))) {
             return [];
         }
 
@@ -126,8 +123,8 @@ class MicrosoftTeamsDigester extends DigesterInterface
         $output = [];
         foreach ($messages as $msg) {
             // format message to add related if exist
-            $msg->related = $msg->parameters->contents->related ?: false;
-            $msg->title = $msg->parameters->contents->title;
+            $msg->related = (isset($msg->parameters->contents) && isset($msg->parameters->contents->related)) ? $msg->parameters->contents->related : false;
+            $msg->title = isset($msg->parameters->contents->title) ? $msg->parameters->contents->title : "";
             $msgType = $this->checkApiMessageType($msg);
             $digester = 'digestFromApi' . ucfirst($msgType);
             $digestedMessage = $this->$digester($msg, $lastUserQuestion);
@@ -279,7 +276,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
      *
      * @return bool
      */
-    protected function isApiactionField($message)
+    protected function isApiActionField($message)
     {
         return $message->type == 'answer' && isset($message->actionField) && !empty($message->actionField);
     }
@@ -344,9 +341,9 @@ class MicrosoftTeamsDigester extends DigesterInterface
     protected function digestFromMsTeams($message)
     {
         // Called if message type not found
-        // Log message and exit
-        error_log(var_export($message, true));
-        die();
+        return [
+            'message' => 'x'
+        ];
     }
 
     /**
@@ -483,7 +480,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
         ];
         if (in_array($reactionType, $positiveReaction)) {
             return [
-                'message' => 'Merci',
+                'message' => $this->langManager->translate('thanks')
             ];
         }
         die();
@@ -500,13 +497,9 @@ class MicrosoftTeamsDigester extends DigesterInterface
     protected function digestFromApiAnswer($message)
     {
         $output = [];
-        $urlButtonSetting = isset(
-            $this->conf['url_buttons']['attribute_name']
-        )
-            ? $this->conf['url_buttons']['attribute_name']
-            : '';
-
-        $title = isset($message->title) ? $message->title : false;
+        if (isset($message->attributes->SIDEBUBBLE_TEXT) && trim($message->attributes->SIDEBUBBLE_TEXT) !== "") {
+            $message->message .= "\n" . $message->attributes->SIDEBUBBLE_TEXT;
+        }
 
         // display simple text item if message do not contains HTML
         if (!$this->isHtml($message->message)) {
@@ -543,20 +536,31 @@ class MicrosoftTeamsDigester extends DigesterInterface
                 } else {
                     // transform HTML Text node to Markdown
                     $text = $this->toMarkdown($nodeBlock);
-
                     if (!empty($text)) {
                         $body[] = self::buildAdaptiveCardTextBlock($text);
                     }
                 }
             }
-            $output['body'] = $body;
+            $countOnlyText = 0;
+            $onlyText = [];
+            foreach ($body as $element) {
+                if ($element["type"] == "TextBlock") {
+                    $countOnlyText++;
+                    $onlyText[] = $element["text"];
+                }
+            }
+            if ($countOnlyText === count($body)) {
+                $output['text'] = implode("<br><br>", $onlyText);
+            } else {
+                $output['body'] = $body;
+            }
         }
 
         // add related if needed
         if ($message->related !== false) {
             $output['related'] = $this->getRelatedBlocks($message->related);
         }
-
+        
         return $output;
     }
 
@@ -567,52 +571,58 @@ class MicrosoftTeamsDigester extends DigesterInterface
      */
     protected function digestFromApiActionfield($message)
     {
-        switch ($message->actionField->listValues->displayType) {
-            case 'dropdown':
-                $options = $message->actionField->listValues->values;
-                $output['text'] = $message->message;
-                $output['body'] = [self::buildAdaptiveCardChoiceSet($options, 'ACTIONFIELD')];
-                $output['actions'] = [
-                    [
-                        "type" => "Action.Submit",
-                        "title" => $this->langManager->translate('validate'),
-                        "data" => [
-                            "action" => "ACTIONFIELD"
+        $output['text'] = $message->message;
+        if (isset($message->actionField) && isset($message->actionField->listValues)) {
+            switch ($message->actionField->listValues->displayType) {
+                case 'dropdown':
+                    $options = $message->actionField->listValues->values;
+                    $output['text'] = $message->message;
+                    $output['body'] = [self::buildAdaptiveCardChoiceSet($options, 'ACTIONFIELD')];
+                    $output['actions'] = [
+                        [
+                            "type" => "Action.Submit",
+                            "title" => $this->langManager->translate('validate'),
+                            "data" => [
+                                "action" => "ACTIONFIELD"
+                            ]
                         ]
-                    ]
-                ];
-                break;
-            case 'buttons':
-                $values = $message->actionField->listValues->values;
-                $output['attachments'] = count($values) ? [
-                    [
-                        'contentType' => 'application/vnd.microsoft.card.thumbnail',
-                        'content' => [
-                            'text' => $message->message,
-                            'wrap' => true,
-                            'buttons' => array_map(
-                                function ($value) {
-                                    return [
-                                        'type' => 'postBack',
-                                        'title' => $value->label[0],
-                                        'value' => json_encode(
-                                            [
-                                                "ACTIONFIELD" => $value->option,
-                                            ]
-                                        )
-                                    ];
-                                },
-                                $values
-                            ),
+                    ];
+                    break;
+                case 'buttons':
+                    $values = $message->actionField->listValues->values;
+                    $output['attachments'] = count($values) ? [
+                        [
+                            'contentType' => 'application/vnd.microsoft.card.thumbnail',
+                            'content' => [
+                                'text' => $message->message,
+                                'wrap' => true,
+                                'buttons' => array_map(
+                                    function ($value) {
+                                        return [
+                                            'type' => 'postBack',
+                                            'title' => $value->label[0],
+                                            'value' => json_encode(
+                                                [
+                                                    "ACTIONFIELD" => $value->option,
+                                                ]
+                                            )
+                                        ];
+                                    },
+                                    $values
+                                ),
+                            ],
                         ],
-                    ],
-                ] : [];
-                break;
-            default:
-                $output['text'] = $message->message;
-                break;
+                    ] : [];
+                    break;
+            }
         }
-
+        if (isset($message->actionField) && isset($message->actionField->fieldType)) {
+            switch ($message->actionField->fieldType) {
+                case 'datePicker':
+                    $output['text'] .= ' (' . $this->langManager->translate('date_format') . ')';
+                    break;
+            }
+        }
         return $output;
     }
 
@@ -625,7 +635,6 @@ class MicrosoftTeamsDigester extends DigesterInterface
     protected function digestFromApiMultipleChoiceQuestion($message, $lastUserQuestion)
     {
         $output = [];
-
         $buttonTitleSetting = $this->getButtonTitleAttribute();
         $options = $message->options;
 
@@ -635,28 +644,27 @@ class MicrosoftTeamsDigester extends DigesterInterface
                 'contentType' => 'application/vnd.microsoft.teams.card.list',
                 'content' => [
                     "items" =>
-                        array_map(
-                            function ($option) use ($buttonTitleSetting) {
-                                return [
-                                    "type" => "resultItem",
-                                    "icon" => "https://img.icons8.com/carbon-copy/100/000000/question-mark.png",
-                                    "id" => $option->value,
-                                    "title" => isset($option->attributes->$buttonTitleSetting)
+                    array_map(
+                        function ($option) use ($buttonTitleSetting) {
+                            return [
+                                "type" => "resultItem",
+                                "icon" => $this->conf['icon_multi_options'],
+                                "id" => $option->value,
+                                "title" => isset($option->attributes->$buttonTitleSetting)
+                                    ? $option->attributes->$buttonTitleSetting
+                                    : $option->label,
+                                "tap" => [
+                                    "type" => "postBack",
+                                    "displayText" => isset($option->attributes->$buttonTitleSetting)
                                         ? $option->attributes->$buttonTitleSetting
                                         : $option->label,
-                                    "tap" => [
-                                        "type" => "postBack",
-                                        "displayText" => isset($option->attributes->$buttonTitleSetting)
-                                            ? $option->attributes->$buttonTitleSetting
-                                            : $option->label,
-                                        "value" => json_encode(['option' => $option->value]),
-                                    ],
-
-                                ];
-                            },
-                            $options,
-                            array_keys($options)
-                        ),
+                                    "value" => json_encode(['option' => $option->value]),
+                                ]
+                            ];
+                        },
+                        $options,
+                        array_keys($options)
+                    ),
                 ],
             ]
         ] : [];
@@ -676,7 +684,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
         $output['text'] = '';
         $output['attachments'] = [
             [
-                'contentType' => 'application/vnd.microsoft.card.thumbnail',
+                'contentType' => 'application/vnd.microsoft.card.hero',
                 'content' => [
                     'text' => $message->message,
                     'wrap' => true,
@@ -830,7 +838,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
     }
 
     /**
-     * This transform an Inbenta API related into Slack Block Kit response
+     * This transform an Inbenta API related into MS Team Block Kit response
      *
      * @param object $related
      *
@@ -842,7 +850,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
             function ($content) {
                 return [
                     "type" => "resultItem",
-                    "icon" => "https://img.icons8.com/carbon-copy/100/000000/question-mark.png",
+                    "icon" => $this->conf['icon_multi_options'],
                     "id" => $content->id,
                     "title" => $content->title,
                     "tap" => [
@@ -1094,8 +1102,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
             '<br><strong><em><del><li><code><pre><a><p><ul><i><s><h1><h2><h3><h4><b>'
         );
 
-
-        $content = str_replace("\n", '', $content);
+        $content = str_replace("\n", "", $content);
         $content = str_replace(['<br />', '<br>'], "\n", $content);
         $content = str_replace(
             [
@@ -1170,6 +1177,9 @@ class MicrosoftTeamsDigester extends DigesterInterface
                     $nodesBlocks = array_merge($nodesBlocks, $this->handleDOMImages($childNode));
                 } elseif ($this->domElementHasTable($childNode)) {
                     $nodesBlocks = array_merge($nodesBlocks, $this->handleDOMTable($childNode));
+                }
+                if (strpos($this->getElementHTML($childNode), '<iframe') !== false) {
+                    $nodesBlocks = array_merge($nodesBlocks, $this->handleDOMIframe($childNode));
                 } else {
                     $nodesBlocks[] = $this->getElementHTML($childNode);
                 }
@@ -1293,6 +1303,29 @@ class MicrosoftTeamsDigester extends DigesterInterface
         return $tmp->saveHTML();
     }
 
-    //endregion
 
+    /**
+     * This check {@link DOMNode::$childNodes} and search for iframe, then return an array
+     * containing the link of the src of the iframe
+     */
+    public function handleDOMIframe(DOMNode $element): array
+    {
+        $elements = [];
+        foreach ($element->childNodes as $childNode) {
+            /** @type DOMNode $childNode */
+            if ($childNode->nodeName === 'iframe') {
+                $source = $childNode->getAttribute('src');
+                if ($source) {
+                    $elements[] = '<a href="' . $source . '">' . $source . '</a>';
+                } else {
+                    $elements[] = $this->getElementHTML($childNode);
+                }
+            } else {
+                $elements[] = $this->getElementHTML($childNode);
+            }
+        }
+        return $elements;
+    }
+
+    //endregion
 }

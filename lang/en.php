@@ -16,4 +16,5 @@ return [
     'thanks' => 'Thanks !',
     'yes' => 'Yes',
     'validate' => 'Confirm',
+    'date_format' => 'date format: mm/dd/YYYY'
 ];
