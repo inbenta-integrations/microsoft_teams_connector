@@ -477,7 +477,7 @@ class MicrosoftTeamsAPIClient
         } // If attachment provided, create activity directly
         elseif (isset($message['attachments'])) {
             $outgoingActivity['attachments'] = $message['attachments'];
-        } elseif ($message['type'] === 'typing') {
+        } elseif (isset($message['type']) && $message['type'] === 'typing') {
             $outgoingActivity['type'] = 'typing';
         }
 
