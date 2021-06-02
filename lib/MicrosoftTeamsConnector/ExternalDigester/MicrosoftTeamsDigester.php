@@ -41,6 +41,10 @@ class MicrosoftTeamsDigester extends DigesterInterface
         'extendedContentsAnswer',
     ];
 
+    protected $attachableFormats = [
+        'jpg', 'jpeg', 'png', 'gif', 'pdf', 'xls', 'xlsx', 'doc', 'docx', 'mp4', 'avi', 'mp3'
+    ];
+
     public function __construct($langManager, $conf, $session)
     {
         $this->langManager = $langManager;
@@ -88,18 +92,25 @@ class MicrosoftTeamsDigester extends DigesterInterface
         $output = [];
         $msgType = $this->checkExternalMessageType($request);
 
-        $digester = 'digestFromMsTeams' . ucfirst($msgType);
-
-        // Check if there are more than one responses from one incoming message
-        $digestedMessage = $this->$digester($request);
-
-        // Handle multiple messages
-        if (isset($digestedMessage['multiple_output'])) {
-            foreach ($digestedMessage['multiple_output'] as $message) {
-                $output[] = $message;
+        if ($msgType === 'attachment') {
+            $output = $this->mediaFileToHyperchat($request->attachments);
+            if (count($output) === 0) {
+                $output[] = $this->digestFromMsTeams();
             }
         } else {
-            $output[] = $digestedMessage;
+            $digester = 'digestFromMsTeams' . ucfirst($msgType);
+
+            // Check if there are more than one responses from one incoming message
+            $digestedMessage = $this->$digester($request);
+
+            // Handle multiple messages
+            if (isset($digestedMessage['multiple_output'])) {
+                foreach ($digestedMessage['multiple_output'] as $message) {
+                    $output[] = $message;
+                }
+            } else {
+                $output[] = $digestedMessage;
+            }
         }
         return $output;
     }
@@ -254,7 +265,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
      */
     protected function isMsTeamsAttachment($message)
     {
-        return false;
+        return isset($message->attachments) && is_array($message->attachments) && count($message->attachments) > 0;
     }
 
     /**
@@ -338,11 +349,11 @@ class MicrosoftTeamsDigester extends DigesterInterface
     /**
      * @param $message
      */
-    protected function digestFromMsTeams($message)
+    protected function digestFromMsTeams($message = null)
     {
         // Called if message type not found
         return [
-            'message' => 'x'
+            'message' => '_'
         ];
     }
 
@@ -453,20 +464,6 @@ class MicrosoftTeamsDigester extends DigesterInterface
     /**
      * @param $message
      *
-     * @return array[]
-     */
-    protected function digestFromMsTeamsAttachment($message)
-    {
-        $attachments = [];
-        foreach ($message->message->attachments as $attachment) {
-            $attachments[] = ['message' => $attachment->payload->url];
-        }
-        return ["multiple_output" => $attachments];
-    }
-
-    /**
-     * @param $message
-     *
      * @return string[]
      */
     protected function digestFromMsTeamsMessageReaction($message)
@@ -560,7 +557,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
         if ($message->related !== false) {
             $output['related'] = $this->getRelatedBlocks($message->related);
         }
-        
+
         return $output;
     }
 
@@ -1103,7 +1100,7 @@ class MicrosoftTeamsDigester extends DigesterInterface
         );
 
         $content = str_replace("\n", "", $content);
-        $content = str_replace(['<br />', '<br>'], "\n", $content);
+        $content = str_replace(['<br />', '<br>', '<br/>'], "\n", $content);
         $content = str_replace(
             [
                 '<strong>',
@@ -1325,6 +1322,56 @@ class MicrosoftTeamsDigester extends DigesterInterface
             }
         }
         return $elements;
+    }
+
+    /**
+     * Check if Hyperchat is running and if the attached file is correct
+     * @param object $request
+     * @return array $output
+     */
+    protected function mediaFileToHyperchat(array $attachments)
+    {
+        $output = [];
+        if ($this->session->get('chatOnGoing', false)) {
+            foreach ($attachments as $attachment) {
+                if (isset($attachment->contentType) && isset($attachment->contentUrl)) {
+                    $format = explode('/', $attachment->contentType);
+                    if (isset($format[1]) && in_array($format[1], $this->attachableFormats)) {
+                        $mediaFile = $this->getMediaFile($attachment->contentUrl, $format[1]);
+                        if ($mediaFile !== "") {
+                            $output[] = ['media' => $mediaFile];
+                        }
+                    }
+                }
+            }
+        }
+        return $output;
+    }
+
+    /**
+     * Get the media file from MS Teams response, 
+     * save file into temporal directory to sent to Hyperchat
+     * @param string $contentUrl
+     * @param string $format
+     */
+    protected function getMediaFile(string $contentUrl, string $format)
+    {
+        $uniqueName = str_replace(' ', '', microtime(false));
+        $uniqueName = str_replace('0.', '', $uniqueName);
+        $fileName = sys_get_temp_dir() . '/file' . $uniqueName . '.' . $format;
+
+        $tmpFile = fopen($fileName, "w") or die;
+        $fileContent = @file_get_contents($contentUrl);
+        if (!is_null($fileContent)) {
+            fwrite($tmpFile, $fileContent);
+            $fileRaw = fopen($fileName, 'r');
+            @unlink($fileName);
+
+            if (gettype($fileRaw) === 'resource') {
+                return $fileRaw;
+            }
+        }
+        return '';
     }
 
     //endregion

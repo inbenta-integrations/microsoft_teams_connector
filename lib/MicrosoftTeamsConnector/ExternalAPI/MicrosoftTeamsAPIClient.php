@@ -18,6 +18,10 @@ class MicrosoftTeamsAPIClient
     const OAUTH_LOGIN_URL = 'https://login.microsoftonline.com/organizations/oauth2/v2.0/token';
     const OAUTH_SCOPE_URL = 'https://api.botframework.com/.default';
 
+    public $email;
+    public $fullName;
+    public $extraInfo;
+
     /**
      * The auth token.
      *
@@ -236,30 +240,29 @@ class MicrosoftTeamsAPIClient
     }
 
     /**
-     * Returns the full name of the user (first + last name)
-     *
-     * @return string | null
+     *   Returns the full name of the user (first + last name)
      */
-    public function getFullName(): ?string
+    public function getFullName()
     {
-        if (!$this->getSender('name') && $this->getSender('id')) {
-            $this->setSenderFromId($this->getSender('id'));
-        }
-
-        return $this->getSender('name');
+        return $this->fullName;
     }
 
     /**
-     * Return the current user email address if available
-     *
-     * @return string
+     *   Returns the user email or a default email made with the external ID
+     *   @return string
      */
-    public function getEmail(): ?string
+    public function getEmail()
     {
-        if (!$this->getSender('email') && $this->getSender('id')) {
-            $this->setSenderFromId($this->getSender('id'));
-        }
-        return $this->getSender('email');
+        return $this->email;
+    }
+
+    /**
+     *   Returns the extra info data
+     *   @return Array
+     */
+    public function getExtraInfo()
+    {
+        return $this->extraInfo;
     }
 
     /**
@@ -267,7 +270,7 @@ class MicrosoftTeamsAPIClient
      * @param string $senderId
      * @return string $email
      */
-    public function getUserEmailFromGraph(string $senderId)
+    /*public function getUserEmailFromGraph(string $senderId)
     {
         $email = "";
         $url = "{$this->targetEndpoint['base_url']}v3/conversations/{$this->targetEndpoint['endpoint']}/pagedmembers";
@@ -289,7 +292,7 @@ class MicrosoftTeamsAPIClient
             }
         }
         return $email;
-    }
+    }*/
 
     /**
      * Generates the external id used by HyperChat to identify one user as external.
@@ -527,6 +530,39 @@ class MicrosoftTeamsAPIClient
         // TODO Get user from Graph API
 //        $this->sender = $this->user($senderID);
         $this->sender['id'] = $senderID;
+    }
+
+    /**
+     * Set full name attribute
+     *
+     * @param String $fullName
+     * @return void
+     */
+    public function setFullName($fullName)
+    {
+        $this->fullName = $fullName;
+    }
+
+    /**
+     * Set extra info attributes
+     *
+     * @param Array $extraInfo
+     * @return void
+     */
+    public function setExtraInfo($extraInfo)
+    {
+        $this->extraInfo = $extraInfo;
+    }
+
+    /**
+     * Set email attribute
+     *
+     * @param String $email
+     * @return void
+     */
+    public function setEmail($email)
+    {
+        $this->email = $email;
     }
 
     /**
